@@ -5,33 +5,43 @@ class AuthRepository {
 
   User? get currentUser => _client.auth.currentUser;
 
-  /// Konversi NIP/ID Karyawan menjadi format email untuk Supabase Auth.
-  /// Contoh: NIP "12345" → "12345@ruaitv.local"
-  static String nipToEmail(String nip) {
-    final cleaned = nip.trim().toLowerCase();
-    // Jika user sudah input format email, gunakan langsung
-    if (cleaned.contains('@')) {
-      return cleaned;
-    }
-    return '$cleaned@ruaitv.local';
-  }
+  /// Login menggunakan NIP/ID Karyawan via Edge Function.
+  /// Edge Function bypass RLS untuk lookup NIP → email,
+  /// lalu sign in dan return session.
+  Future<void> signInWithNip(String nip, String password) async {
+    final response = await _client.functions.invoke(
+      'login-nip',
+      body: {
+        'nip': nip.trim(),
+        'password': password,
+      },
+    );
 
-  /// Login menggunakan ID Karyawan / NIP.
-  /// NIP dikonversi ke format email internal (nip@ruaitv.local)
-  /// sehingga tidak perlu lookup ke tabel users terlebih dahulu.
-  Future<AuthResponse> signInWithNip(String nip, String password) async {
-    final email = nipToEmail(nip);
-    try {
-      return await _client.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-    } on AuthException catch (e) {
-      if (e.message.contains('Invalid login credentials')) {
-        throw Exception('ID Karyawan/NIP atau password salah.');
-      }
-      throw Exception(e.message);
+    final data = response.data as Map<String, dynamic>?;
+
+    if (data == null) {
+      throw Exception('Tidak ada respons dari server.');
     }
+
+    if (data['error'] != null) {
+      throw Exception(data['error'].toString());
+    }
+
+    // Set session dari response Edge Function
+    final session = data['session'];
+    if (session == null) {
+      throw Exception('Login gagal. Session tidak ditemukan.');
+    }
+
+    final accessToken = session['access_token'] as String?;
+    final refreshToken = session['refresh_token'] as String?;
+
+    if (accessToken == null || refreshToken == null) {
+      throw Exception('Login gagal. Token tidak valid.');
+    }
+
+    // Recover session di client agar AuthGate mendeteksi user sudah login
+    await _client.auth.setSession(accessToken);
   }
 
   Future<AuthResponse> signIn(String email, String password) {
