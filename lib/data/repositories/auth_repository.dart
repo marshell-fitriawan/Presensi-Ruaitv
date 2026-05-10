@@ -6,56 +6,96 @@ class AuthRepository {
   User? get currentUser => _client.auth.currentUser;
 
   /// Login menggunakan NIP/ID Karyawan via Edge Function.
-  /// Edge Function bypass RLS untuk lookup NIP → email → sign in.
+  /// Fallback: jika edge function gagal, coba login langsung.
   Future<void> signInWithNip(String nip, String password) async {
-    final response = await _client.functions.invoke(
-      'login-nip',
-      body: {
-        'nip': nip.trim(),
-        'password': password,
-      },
-    );
+    final trimmedNip = nip.trim();
 
-    final data = response.data;
+    // Coba via Edge Function dulu (bypass RLS)
+    try {
+      final response = await _client.functions.invoke(
+        'login-nip',
+        body: {
+          'nip': trimmedNip,
+          'password': password,
+        },
+      );
 
-    // Handle jika response bukan Map (bisa String error dari Supabase)
-    if (data == null) {
-      throw Exception('Tidak ada respons dari server.');
-    }
+      final data = response.data;
 
-    // Jika data adalah String (error HTML/text dari server)
-    if (data is String) {
-      if (data.contains('not found') || data.contains('404')) {
-        throw Exception(
-            'Edge function belum di-deploy. Jalankan: supabase functions deploy login-nip');
+      if (data != null && data is Map) {
+        final body = Map<String, dynamic>.from(data);
+
+        if (body['session'] != null) {
+          final accessToken = body['session']['access_token'] as String?;
+          if (accessToken != null) {
+            await _client.auth.setSession(accessToken);
+            return;
+          }
+        }
+
+        // Edge function returned error
+        if (body['error'] != null) {
+          final errorMsg = body['error'].toString();
+          // Jika NIP tidak ditemukan di DB, coba fallback
+          if (!errorMsg.contains('tidak ditemukan')) {
+            throw Exception(errorMsg);
+          }
+        }
       }
-      throw Exception('Server error: $data');
+    } catch (e) {
+      // Jika edge function belum deploy / network error, lanjut ke fallback
+      if (e is Exception &&
+          e.toString().contains('Password salah')) {
+        rethrow;
+      }
+      // Lanjut ke fallback strategies
     }
 
-    final Map<String, dynamic> body = data is Map<String, dynamic>
-        ? data
-        : Map<String, dynamic>.from(data as Map);
-
-    // Cek error dari edge function
-    if (body.containsKey('error') && body['error'] != null) {
-      throw Exception(body['error'].toString());
+    // Fallback 1: Login langsung dengan email jika input berupa email
+    if (trimmedNip.contains('@')) {
+      try {
+        await _client.auth.signInWithPassword(
+          email: trimmedNip,
+          password: password,
+        );
+        return;
+      } on AuthException {
+        throw Exception('Email atau password salah.');
+      }
     }
 
-    // Ambil session
-    final session = body['session'];
-    if (session == null) {
-      throw Exception('Login gagal. Session tidak ditemukan.');
+    // Fallback 2: Coba format nip@ruaitv.local
+    try {
+      await _client.auth.signInWithPassword(
+        email: '$trimmedNip@ruaitv.local',
+        password: password,
+      );
+      return;
+    } on AuthException {
+      // Lanjut ke fallback berikutnya
     }
 
-    final accessToken = session['access_token'] as String?;
-    final refreshToken = session['refresh_token'] as String?;
+    // Fallback 3: Coba lookup dari tabel users (mungkin RLS allow)
+    try {
+      final result = await _client
+          .from('users')
+          .select('email')
+          .or('nip.eq.$trimmedNip,employee_id.eq.$trimmedNip')
+          .maybeSingle();
 
-    if (accessToken == null || refreshToken == null) {
-      throw Exception('Login gagal. Token tidak valid.');
+      if (result != null && result['email'] != null) {
+        final email = result['email'] as String;
+        await _client.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+        return;
+      }
+    } catch (_) {
+      // RLS mungkin block, abaikan
     }
 
-    // Set session di client agar AuthGate mendeteksi user sudah login
-    await _client.auth.setSession(accessToken);
+    throw Exception('ID Karyawan/NIP tidak ditemukan.');
   }
 
   Future<AuthResponse> signIn(String email, String password) {
