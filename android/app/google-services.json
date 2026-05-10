@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "395326009285",
+    "project_id": "ruaitv-presensi",
+    "storage_bucket": "ruaitv-presensi.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:395326009285:android:c053ce36fcf16316c9e5ac",
+        "android_client_info": {
+          "package_name": "com.example.ruaitv_presensi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAVKCYSwwwmMWeY-Oe_5A39egJ4flnh1aY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
