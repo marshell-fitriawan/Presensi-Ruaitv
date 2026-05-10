@@ -41,12 +41,7 @@ class _LoginPageState extends State<LoginPage> {
       );
     } catch (error) {
       String message = error.toString();
-      // Bersihkan pesan error agar lebih user-friendly
-      if (message.contains('Invalid login credentials')) {
-        message = 'ID Karyawan/NIP atau password salah.';
-      } else if (message.contains('tidak ditemukan')) {
-        message = 'ID Karyawan/NIP tidak ditemukan.';
-      } else if (message.contains('Exception:')) {
+      if (message.contains('Exception:')) {
         message = message.replaceAll('Exception: ', '');
       }
       setState(() {

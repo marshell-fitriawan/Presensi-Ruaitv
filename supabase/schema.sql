@@ -6,6 +6,8 @@ create table if not exists public.users (
   id uuid primary key references auth.users (id) on delete cascade,
   name text not null,
   email text not null,
+  nip text,
+  employee_id text,
   department text,
   role text not null default 'employee',
   face_embedding_id text,
@@ -13,6 +15,9 @@ create table if not exists public.users (
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+create index if not exists users_nip_idx on public.users (nip);
+create index if not exists users_employee_id_idx on public.users (employee_id);
 
 create table if not exists public.attendance (
   id uuid primary key default gen_random_uuid(),

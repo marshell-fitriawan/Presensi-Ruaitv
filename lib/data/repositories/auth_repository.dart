@@ -5,32 +5,33 @@ class AuthRepository {
 
   User? get currentUser => _client.auth.currentUser;
 
-  /// Login menggunakan ID Karyawan atau NIP.
-  /// Cari user di tabel 'users' berdasarkan nip atau employee_id,
-  /// lalu gunakan email yang terdaftar untuk sign in via Supabase Auth.
-  ///
-  /// Tabel 'users' harus memiliki kolom 'nip' dan/atau 'employee_id'.
+  /// Konversi NIP/ID Karyawan menjadi format email untuk Supabase Auth.
+  /// Contoh: NIP "12345" → "12345@ruaitv.local"
+  static String nipToEmail(String nip) {
+    final cleaned = nip.trim().toLowerCase();
+    // Jika user sudah input format email, gunakan langsung
+    if (cleaned.contains('@')) {
+      return cleaned;
+    }
+    return '$cleaned@ruaitv.local';
+  }
+
+  /// Login menggunakan ID Karyawan / NIP.
+  /// NIP dikonversi ke format email internal (nip@ruaitv.local)
+  /// sehingga tidak perlu lookup ke tabel users terlebih dahulu.
   Future<AuthResponse> signInWithNip(String nip, String password) async {
-    // Cari user berdasarkan NIP atau employee_id
-    final response = await _client
-        .from('users')
-        .select('email')
-        .or('nip.eq.$nip,employee_id.eq.$nip')
-        .maybeSingle();
-
-    if (response == null) {
-      throw Exception('ID Karyawan / NIP tidak ditemukan.');
+    final email = nipToEmail(nip);
+    try {
+      return await _client.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+    } on AuthException catch (e) {
+      if (e.message.contains('Invalid login credentials')) {
+        throw Exception('ID Karyawan/NIP atau password salah.');
+      }
+      throw Exception(e.message);
     }
-
-    final email = response['email'] as String?;
-    if (email == null || email.isEmpty) {
-      throw Exception('Email belum terdaftar untuk akun ini.');
-    }
-
-    return _client.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
   }
 
   Future<AuthResponse> signIn(String email, String password) {

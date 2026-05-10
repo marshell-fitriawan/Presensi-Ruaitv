@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'create_user') {
-      const { email, password, name, department, role } = payload;
+      const { email, password, name, nip, department, role } = payload;
 
       const { data: userData, error: createError } =
         await supabase.auth.admin.createUser({
@@ -103,6 +103,8 @@ Deno.serve(async (req) => {
         id: userId,
         name,
         email,
+        nip: nip || null,
+        employee_id: nip || null,
         department,
         role,
         is_active: true,

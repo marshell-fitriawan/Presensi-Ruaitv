@@ -93,7 +93,7 @@ class _EmployeeManagementPageState extends State<EmployeeManagementPage> {
 
   Future<void> _openCreateDialog() async {
     final formKey = GlobalKey<FormState>();
-    final emailController = TextEditingController();
+    final nipController = TextEditingController();
     final passwordController = TextEditingController();
     final nameController = TextEditingController();
     final departmentController = TextEditingController();
@@ -110,32 +110,50 @@ class _EmployeeManagementPageState extends State<EmployeeManagementPage> {
               title: const Text('Tambah Karyawan'),
               content: Form(
                 key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(controller: nameController),
-                    TextFormField(
-                      controller: emailController,
-                      validator: (v) =>
-                          v == null || v.isEmpty ? 'Email wajib' : null,
-                    ),
-                    TextFormField(
-                      controller: passwordController,
-                      obscureText: true,
-                      validator: (v) =>
-                          v != null && v.length >= 6 ? null : 'Min 6 karakter',
-                    ),
-                    TextFormField(controller: departmentController),
-                    DropdownButtonFormField(
-                      value: role,
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'employee', child: Text('Employee')),
-                        DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                      ],
-                      onChanged: (v) => setState(() => role = v!),
-                    )
-                  ],
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: nameController,
+                        decoration:
+                            const InputDecoration(labelText: 'Nama Lengkap'),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: nipController,
+                        decoration: const InputDecoration(
+                            labelText: 'NIP / ID Karyawan'),
+                        validator: (v) =>
+                            v == null || v.isEmpty ? 'NIP wajib diisi' : null,
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: passwordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(labelText: 'Password'),
+                        validator: (v) =>
+                            v != null && v.length >= 6 ? null : 'Min 6 karakter',
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: departmentController,
+                        decoration:
+                            const InputDecoration(labelText: 'Departemen'),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField(
+                        value: role,
+                        decoration: const InputDecoration(labelText: 'Role'),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'employee', child: Text('Employee')),
+                          DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                        ],
+                        onChanged: (v) => setState(() => role = v!),
+                      )
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -150,14 +168,21 @@ class _EmployeeManagementPageState extends State<EmployeeManagementPage> {
 
                           setState(() => isSubmitting = true);
 
+                          // Konversi NIP ke format email untuk Supabase Auth
+                          final nip = nipController.text.trim();
+                          final email = nip.contains('@')
+                              ? nip
+                              : '$nip@ruaitv.local';
+
                           final res = await supabase.functions.invoke(
                             'admin-api',
                             body: {
                               "action": "create_user",
                               "payload": {
-                                "email": emailController.text,
+                                "email": email,
                                 "password": passwordController.text,
                                 "name": nameController.text,
+                                "nip": nip,
                                 "department": departmentController.text,
                                 "role": role,
                               }
