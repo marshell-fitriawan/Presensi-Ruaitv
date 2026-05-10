@@ -7,7 +7,12 @@ import { corsHeaders } from '../_shared/cors.ts';
  * Bypass RLS untuk lookup NIP/ID Karyawan di tabel users,
  * lalu sign in menggunakan email yang ditemukan.
  * 
- * Request body: { "nip": "12345", "password": "xxx" }
+ * Pencarian berdasarkan (prioritas):
+ * 1. kolom nip
+ * 2. kolom employee_id
+ * 3. kolom email (jika input berupa email)
+ * 
+ * Request body: { "nip": "1234", "password": "xxx" }
  * Response: { "session": {...}, "user": {...} } atau { "error": "..." }
  */
 Deno.serve(async (req) => {
@@ -47,22 +52,67 @@ Deno.serve(async (req) => {
       auth: { persistSession: false },
     });
 
-    // Cari user berdasarkan NIP atau employee_id
+    const trimmedNip = nip.trim();
+    let email: string | null = null;
+
+    // Strategi 1: Cari berdasarkan kolom nip atau employee_id
     const { data: userData, error: lookupError } = await supabase
       .from('users')
-      .select('email')
-      .or(`nip.eq.${nip},employee_id.eq.${nip}`)
+      .select('email, nip, employee_id')
+      .or(`nip.eq.${trimmedNip},employee_id.eq.${trimmedNip}`)
       .maybeSingle();
 
     if (lookupError) {
-      return new Response(JSON.stringify({ error: 'Gagal mencari data karyawan.' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.error('Lookup error:', lookupError.message);
     }
 
-    if (!userData || !userData.email) {
-      return new Response(JSON.stringify({ error: 'ID Karyawan / NIP tidak ditemukan.' }), {
+    if (userData?.email) {
+      email = userData.email;
+    }
+
+    // Strategi 2: Jika tidak ketemu, coba cari langsung di email
+    // (untuk backward compatibility jika NIP = email)
+    if (!email) {
+      const emailToTry = trimmedNip.includes('@') 
+        ? trimmedNip 
+        : `${trimmedNip}@ruaitv.local`;
+
+      const { data: emailUser } = await supabase
+        .from('users')
+        .select('email')
+        .eq('email', emailToTry)
+        .maybeSingle();
+
+      if (emailUser?.email) {
+        email = emailUser.email;
+      }
+    }
+
+    // Strategi 3: Coba langsung sign in dengan format nip@ruaitv.local
+    // (jika user dibuat dengan format email ini)
+    if (!email) {
+      const fallbackEmail = trimmedNip.includes('@') 
+        ? trimmedNip 
+        : `${trimmedNip}@ruaitv.local`;
+      
+      const { data: directAuth, error: directError } = await supabase.auth.signInWithPassword({
+        email: fallbackEmail,
+        password: password,
+      });
+
+      if (!directError && directAuth.session) {
+        return new Response(JSON.stringify({
+          session: directAuth.session,
+          user: directAuth.user,
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    if (!email) {
+      return new Response(JSON.stringify({ error: 'ID Karyawan/NIP tidak ditemukan.' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -70,7 +120,7 @@ Deno.serve(async (req) => {
 
     // Sign in dengan email yang ditemukan
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email: userData.email,
+      email: email,
       password: password,
     });
 

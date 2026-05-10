@@ -6,8 +6,7 @@ class AuthRepository {
   User? get currentUser => _client.auth.currentUser;
 
   /// Login menggunakan NIP/ID Karyawan via Edge Function.
-  /// Edge Function bypass RLS untuk lookup NIP → email,
-  /// lalu sign in dan return session.
+  /// Edge Function bypass RLS untuk lookup NIP → email → sign in.
   Future<void> signInWithNip(String nip, String password) async {
     final response = await _client.functions.invoke(
       'login-nip',
@@ -17,18 +16,33 @@ class AuthRepository {
       },
     );
 
-    final data = response.data as Map<String, dynamic>?;
+    final data = response.data;
 
+    // Handle jika response bukan Map (bisa String error dari Supabase)
     if (data == null) {
       throw Exception('Tidak ada respons dari server.');
     }
 
-    if (data['error'] != null) {
-      throw Exception(data['error'].toString());
+    // Jika data adalah String (error HTML/text dari server)
+    if (data is String) {
+      if (data.contains('not found') || data.contains('404')) {
+        throw Exception(
+            'Edge function belum di-deploy. Jalankan: supabase functions deploy login-nip');
+      }
+      throw Exception('Server error: $data');
     }
 
-    // Set session dari response Edge Function
-    final session = data['session'];
+    final Map<String, dynamic> body = data is Map<String, dynamic>
+        ? data
+        : Map<String, dynamic>.from(data as Map);
+
+    // Cek error dari edge function
+    if (body.containsKey('error') && body['error'] != null) {
+      throw Exception(body['error'].toString());
+    }
+
+    // Ambil session
+    final session = body['session'];
     if (session == null) {
       throw Exception('Login gagal. Session tidak ditemukan.');
     }
@@ -40,7 +54,7 @@ class AuthRepository {
       throw Exception('Login gagal. Token tidak valid.');
     }
 
-    // Recover session di client agar AuthGate mendeteksi user sudah login
+    // Set session di client agar AuthGate mendeteksi user sudah login
     await _client.auth.setSession(accessToken);
   }
 
