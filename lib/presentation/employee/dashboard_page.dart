@@ -8,6 +8,7 @@ import '../../data/repositories/user_repository.dart';
 import '../../data/services/session_service.dart';
 import 'attendance_page.dart';
 import 'history_page.dart';
+import 'rekap_bulanan_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -197,6 +198,19 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                     icon: const Icon(Icons.history),
                     label: const Text('Riwayat Presensi'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      textStyle: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const RekapBulananPage()),
+                    ),
+                    icon: const Icon(Icons.bar_chart),
+                    label: const Text('Rekap Bulanan'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       textStyle: const TextStyle(fontSize: 16),
